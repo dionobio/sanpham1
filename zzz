@@ -1,0 +1,255 @@
+models 
+public function updateAlbum($san_pham_id, $image_paths) {
+            try {
+                // Xóa album ảnh cũ trước khi thêm ảnh mới
+                $sql_delete = "DELETE FROM san_pham_images WHERE san_pham_id = :san_pham_id";
+                $stmt_delete = $this->pdo->prepare($sql_delete);
+                $stmt_delete->execute([':san_pham_id' => $san_pham_id]);
+        
+                // Thêm ảnh mới vào album
+                $this->addAlbum($san_pham_id, $image_paths);
+        
+                return true;
+            } catch (PDOException $e) {
+                echo "Lỗi: " . $e->getMessage();
+                return false;
+            }
+        }
+
+controller add sp
+public function addSanpham() {
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            // Lấy dữ liệu từ form
+            $danh_muc_id = $_POST['danh_muc_id'] ?? null;
+            $ten_san_pham = $_POST['ten_san_pham'] ?? '';
+            $mo_ta = $_POST['mo_ta'] ?? '';
+            $gia_ban = $_POST['gia_ban'] ?? 0;
+            $gia_nhap = $_POST['gia_nhap'] ?? 0;
+            $gia_khuyen_mai = $_POST['gia_khuyen_mai'] ?? 0;
+            $so_luong = $_POST['so_luong'] ?? 0;
+            $hinh_anh = $_FILES['hinh_anh']['name'] ?? '';
+            $trang_thai = $_POST['trang_thai'] ?? 'active';
+            $ngay_nhap = $_POST['ngay_nhap'] ?? date('Y-m-d');
+            $luot_xem = 0;
+            $img_array = $_FILES['img_array'] ?? [];
+    
+            // Xử lý upload ảnh chính
+            $file_thumb = uploadFile($_FILES['hinh_anh'], './uploads/');
+            if ($file_thumb !== $hinh_anh) {
+                // Lỗi tải tệp
+                $errors['hinh_anh'] = $file_thumb;
+            } else {
+                // Nếu upload thành công, lưu tên tệp vào biến
+                $hinh_anh = $file_thumb;
+            }
+    
+            $errors = [];
+    
+            // Kiểm tra các trường bắt buộc
+            if (empty($danh_muc_id)) {
+                $errors['danh_muc_id'] = 'Danh mục không được để trống!';
+            }
+            if (empty($ten_san_pham)) {
+                $errors['ten_san_pham'] = 'Tên sản phẩm không được để trống!';
+            }
+            if (empty($mo_ta)) {
+                $errors['mo_ta'] = 'Mô tả không được để trống!';
+            }
+            if (empty($gia_ban) || $gia_ban <= 0) {
+                $errors['gia_ban'] = 'Giá bán phải lớn hơn 0!';
+            }
+            if (empty($gia_nhap) || $gia_nhap <= 0) {
+                $errors['gia_nhap'] = 'Giá nhập phải lớn hơn 0!';
+            }
+            if (empty($so_luong) || $so_luong <= 0) {
+                $errors['so_luong'] = 'Số lượng phải lớn hơn 0!';
+            }
+            if (empty($ngay_nhap)) {
+                $errors['ngay_nhap'] = 'Ngày nhập không được để trống!';
+            }
+            if (empty($trang_thai)) {
+                $errors['trang_thai'] = 'Trạng thái không được để trống!';
+            }
+    
+            // Kiểm tra nếu không có lỗi
+            if (empty($errors)) {
+                // Gọi phương thức add với các tham số
+                $san_pham_id = $this->model->add($danh_muc_id, $ten_san_pham, $mo_ta, $gia_ban, $gia_nhap, $gia_khuyen_mai, $so_luong, $hinh_anh, $trang_thai, $ngay_nhap, $luot_xem);
+    
+                // Nếu thêm sản phẩm thành công, lấy ID sản phẩm vừa thêm
+                if ($san_pham_id) {
+                    // Xử lý thêm album ảnh
+                    if (!empty($img_array['name'])) {
+                        foreach ($img_array['name'] as $key => $value) {
+                            $file = [
+                                'name' => $img_array['name'][$key],
+                                'type' => $img_array['type'][$key],
+                                'tmp_name' => $img_array['tmp_name'][$key],
+                                'error' => $img_array['error'][$key],
+                                'size' => $img_array['size'][$key]
+                            ];
+                            $image_paths = uploadFile($file, 'uploads/');
+                            if ($image_paths) {
+                                $this->model->addAlbum($san_pham_id, $image_paths);
+                            } else {
+                                $errors['img_array'] = "Lỗi khi tải ảnh lên: " . $file['name'];
+                            }
+                        }
+                    }
+                    
+                    // Chuyển hướng về trang danh sách sản phẩm nếu thành công
+                    header("Location: index.php?act=list-sanpham");
+                    exit();
+                } else {
+                    // Nếu không thành công, hiển thị thông báo lỗi
+                    $errors['database'] = 'Có lỗi khi thêm sản phẩm vào cơ sở dữ liệu.';
+                }
+            }
+    
+            // Nếu có lỗi, trả về trang thêm sản phẩm và hiển thị lỗi
+            require_once('./admin/views/sanpham/sanpham_add.php');
+        } else {
+            echo "Yêu cầu không hợp lệ!";
+        }
+    }
+
+
+fromaddsp
+<!doctype html>
+<html lang="vi" data-layout="vertical" data-topbar="light" data-sidebar="dark" data-sidebar-size="lg"
+   data-sidebar-image="none" data-preloader="disable" data-theme="default" data-theme-colors="default">
+<head>
+   <meta charset="UTF-8" />
+   <title>Thêm Sản Phẩm Mới</title>
+   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+   <meta content="Quản lý sản phẩm" name="description" />
+   <meta content="Your Company" name="author" />
+   <!-- CSS -->
+   <?php require_once "views/layouts/libs_css.php"; ?>
+</head>
+<body>
+   <div id="layout-wrapper">
+      <!-- HEADER -->
+      <?php
+         require_once "views/layouts/header.php";
+         require_once "views/layouts/siderbar.php";
+      ?>
+      <div class="vertical-overlay"></div>
+      <div class="main-content">
+         <div class="page-content">
+            <div class="container-fluid">
+               <div class="row">
+                  <div class="col-12">
+                     <div class="page-title-box d-sm-flex align-items-center justify-content-between">
+                        <h4 class="mb-sm-0">Thêm Sản Phẩm Mới</h4>
+                        <div class="page-title-right">
+                           <ol class="breadcrumb m-0">
+                              <li class="breadcrumb-item"><a href="javascript: void(0);">Admin</a></li>
+                              <li class="breadcrumb-item active">Thêm sản phẩm</li>
+                           </ol>
+                        </div>
+                     </div>
+                  </div>
+               </div>
+               <div class="row">
+                  <div class="col-12">
+                     <div class="card">
+                        <div class="card-header">
+                           <h4 class="card-title mb-0">Thông Tin Sản Phẩm</h4>
+                        </div>
+                        <div class="card-body">
+                           <form action="index.php?act=add-sanpham-submit" method="POST" enctype="multipart/form-data">
+                              <div class="row">
+                                 <!-- Cột 1 -->
+                                 <div class="col-md-6">
+                                    <div class="mb-3">
+                                       <label for="ten_san_pham" class="form-label">Tên sản phẩm</label>
+                                       <input type="text" class="form-control" id="ten_san_pham" name="ten_san_pham" required>
+                                    </div>
+                                    <div class="mb-3">
+                                       <label for="mo_ta" class="form-label">Mô tả</label>
+                                       <textarea class="form-control" id="mo_ta" name="mo_ta" required></textarea>
+                                    </div>
+                                    <div class="mb-3">
+                                       <label for="ngay_nhap" class="form-label">Ngày nhập</label>
+                                       <input type="date" class="form-control" id="ngay_nhap" name="ngay_nhap" value="<?php echo date('Y-m-d'); ?>" required>
+                                    </div>
+                                    <div class="mb-3">
+                                       <label for="gia_ban" class="form-label">Giá bán</label>
+                                       <input type="number" class="form-control" id="gia_ban" name="gia_ban" required>
+                                    </div>
+                                    <div class="mb-3">
+                                       <label for="gia_nhap" class="form-label">Giá nhập</label>
+                                       <input type="number" class="form-control" id="gia_nhap" name="gia_nhap" required>
+                                    </div>
+                                 </div>
+                                 <!-- Cột 2 -->
+                                 <div class="col-md-6">
+                                    <div class="mb-3">
+                                       <label for="gia_khuyen_mai" class="form-label">Giá khuyến mãi</label>
+                                       <input type="number" class="form-control" id="gia_khuyen_mai" name="gia_khuyen_mai">
+                                    </div>
+                                    <div class="mb-3">
+                                       <label for="so_luong" class="form-label">Số lượng</label>
+                                       <input type="number" class="form-control" id="so_luong" name="so_luong" required>
+                                    </div>
+                                    <div class="mb-3">
+                                       <label for="trang_thai" class="form-label">Trạng thái</label>
+                                       <select class="form-select" id="trang_thai" name="trang_thai" required>
+                                          <option value="active">Active</option>
+                                          <option value="inactive">Inactive</option>
+                                       </select>
+                                    </div>
+                                    <div class="mb-3">
+                                       <label for="danh_muc_id" class="form-label">Danh mục</label>
+                                       <select class="form-select" id="danh_muc_id" name="danh_muc_id" required>
+                                          <option value="">Chọn danh mục</option>
+                                          <?php if (isset($danhMucs) && !empty($danhMucs)): ?>
+                                          <?php foreach ($danhMucs as $danhMuc): ?>
+                                          <option value="<?php echo $danhMuc['id']; ?>">
+                                             <?php echo $danhMuc['ten_danh_muc']; ?>
+                                          </option>
+                                          <?php endforeach; ?>
+                                          <?php else: ?>
+                                          <option value="">Chưa có danh mục nào</option>
+                                          <?php endif; ?>
+                                       </select>
+                                    </div>
+                                    <div class="mb-3">
+                                       <label for="hinh_anh" class="form-label">Hình ảnh sản phẩm</label>
+                                       <input type="file" class="form-control" id="hinh_anh" name="hinh_anh">
+                                    </div>
+                                    <div class="mb-3">
+                                       <label for="hinh_anh" class="form-label">Album anh</label>
+                                       <input type="file" class="form-control"  name="img_array[]" name="img_array[]" multiple>
+                                    </div>
+                                 </div>
+                              </div>
+                              <button type="submit" class="btn btn-success">Lưu sản phẩm</button>
+                           </form>
+                        </div>
+                     </div>
+                  </div>
+               </div>
+            </div>
+         </div>
+         <footer class="footer">
+            <div class="container-fluid">
+               <div class="row">
+                  <div class="col-sm-6">
+                     <script>
+                        document.write(new Date().getFullYear())
+                     </script> © Your Company.
+                  </div>
+                  <div class="col-sm-6">
+                     <div class="text-sm-end d-none d-sm-block">
+                        Design & Develop by Your Company
+                     </div>
+                  </div>
+               </div>
+            </div>
+         </footer>
+      </div>
+   </div>
+</body>
+</html>
